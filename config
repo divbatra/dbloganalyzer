@@ -1,0 +1,7 @@
+[DEFAULT]
+user=ocid1.user.oc1..aaaaaaaaz433rmxlsh7*************
+fingerprint=1b:ae:6e:a1:****************
+tenancy=ocid1.tenancy.oc1..aaaaaaaax****************
+region=us-chicago-1
+key_file=/home/opc/loganalyzer/key.pem
+
