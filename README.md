@@ -108,82 +108,28 @@ Review the following files in the current folder:
 In Cloud Shell, run the *fn deploy* command to build the function and its dependencies as a Docker image, 
 push the image to OCIR, and deploy the function to Oracle Functions in your application.
 
-![user input icon](./images/userinput.png)
 ```
 fn -v deploy --app <app-name>
 ```
 
-
-## Set the function configuration values
-The function requires several configuration variables to be set.
-
-![user input icon](./images/userinput.png)
-
-Use the *fn CLI* to set the config value:
-```
-fn config function <app-name> <function-name> ords-base-url <ORDS Base URL>
-fn config function <app-name> <function-name> db-schema <DB schema>
-fn config function <app-name> <function-name> db-user <DB user name>
-fn config function <app-name> <function-name> dbpwd-cipher <DB encrypted password>
-fn config function <app-name> <function-name> input-bucket <input bucket name>
-fn config function <app-name> <function-name> processed-bucket <processed bucket name>
-```
-e.g.
-```
-fn config function myapp oci-adb-ords-runsql-python ords-base-url "https://xxxxxx-db123456.adb.us-region.oraclecloudapps.com/ords/"
-fn config function myapp oci-adb-ords-runsql-python db-schema "admin"
-fn config function myapp oci-adb-ords-runsql-python db-user "admin"
-fn config function myapp oci-adb-ords-runsql-python dbpwd-cipher "xxxxxxxxx"
-fn config function myapp oci-adb-ords-runsql-python input-bucket "input-bucket"
-fn config function myapp oci-adb-ords-runsql-python processed-bucket "processed-bucket"
-```
-
-
-## Create an Event rule
-Let's configure a Cloud Event to trigger the function when files are dropped into your *input* bucket.
-
-![user input icon](./images/userinput.png)
-
-Go to the OCI console > Application Integration > Events Service. Click *Create Rule*.
-
-![user input icon](./images/1-create_event_rule.png)
-
-Assign a display name and a description.
-In the *Rule Conditions* section,create 3 conditions:
-* type = *Event Type*, Service Name = *Object Storage*, Event Type = *Object - Create*
-* type = *Attribute*, Attribute Name = *compartmentName*, Attribute Value = *your compartment name*
-* type = *Attribute*, Attribute Name = *bucketName*, Attribute Value = *your input bucket*
-In the *Actions* section, set the *Action type* as "Functions", select your *Function Compartment*, your *Function Application*, and your *Function ID*.
-
-![user input icon](./images/2-create_event_rule.png)
-
-
 ## Test
-Finally, let's test the workflow.
+Flow can be tested using APEX by uploading the logfile. Once, you click on Analyze button. It will call the rest end point that we created using API gateway invoking the OCI Function explained below.
 
-![user input icon](./images/userinput.png)
+<img width="950" alt="image" src="https://github.com/user-attachments/assets/e35131ca-70a5-48c1-8aaa-029f44c5b98a">
 
-Upload one or all CSV files from the current folder to your *input bucket*. Let's imagine those files contains sales data from different regions of the world.
-
-On the OCI console, navigate to *Autonomous Data Warehouse* and click on your database, click on *Service Console*, navigate to Development, and click on *SQL Developer Web*. Authenticate with your ADMIN username and password.
-Enter the following query in the *worksheet* of *SQL Developer Web*:
-```sql
-select json_serialize (JSON_DOCUMENT) from regionsnumbers;
+Test can also be done using curl command and check output file created in Object storage with all solutions and also check you ADW collections to see summary and detailed log analysis.
 
 ```
-You should see the data from the CSV files. To learn more about JSON in Oracle Database, refer to Chris Saxon's blog [How to Store, Query, and Create JSON Documents in Oracle Database](https://blogs.oracle.com/sql/how-to-store-query-and-create-json-documents-in-oracle-database)
+echo -n '{"log_object_storage_url": "https://objectstorage.us-chicago-1.oraclecloud.com/n/****/b/**/o/MF_DP_APP1_IMPDP.log", "ords_base_url": "https://qfoidsyfqbriabt-....../ords", "db_schema": "....", "db_user": "...", "db_pwd": "..."}' | fn invoke AITests genai
+```
 
-
-
-## File Structure
+## Lets drill down to undnerstand function code:
 
 - **analyze_log**: Main entry function for analyzing logs.
 - **extract_ora_error_lines**: Extracts ORA errors from the log text.
 - **generate_responses_for_ora_errors**: Generates solutions and summaries for extracted ORA errors.
-- **generate_response_for_error**: Generates a response for a single ORA error.
 - **generate_summary**: Generates a summary of all extracted ORA errors.
 - **soda_insert**: Inserts data into an ADW SODA collection.
-- **truncate_collection**: Truncates a SODA collection in ADW (commented out for safety).
 
 ## Logging
 
@@ -193,10 +139,3 @@ Logging is configured at the DEBUG level to capture detailed information. Logs w
 
 The script includes error handling mechanisms that log issues at various stages of the process. If an error occurs during log analysis or Generative AI inference, the function will return a detailed error message.
 
-## Contributing
-
-Contributions are welcome! Please submit a pull request or open an issue to discuss any changes.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
