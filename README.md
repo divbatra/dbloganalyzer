@@ -126,7 +126,10 @@ Flow can be tested using APEX by uploading the logfile. Once, you click on Analy
 
 <img width="950" alt="image" src="https://github.com/user-attachments/assets/e35131ca-70a5-48c1-8aaa-029f44c5b98a">
 
+
+
 Test can also be done using curl command and check output file created in Object storage with all solutions and also check you ADW collections to see summary and detailed log analysis.
+
 
 ```
 echo -n '{"log_object_storage_url": "https://objectstorage.us-chicago-1.oraclecloud.com/n/****/b/**/o/MF_DP_APP1_IMPDP.log", "ords_base_url": "https://qfoidsyfqbriabt-....../ords", "db_schema": "....", "db_user": "...", "db_pwd": "..."}' | fn invoke AITests genai
