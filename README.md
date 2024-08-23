@@ -103,6 +103,15 @@ Review the following files in the current folder:
 * its dependencies, [requirements.txt](./requirements.txt)
 * the function metadata, [func.yaml](./func.yaml)
 
+  ## Lets drill down to understand function code:
+
+- **analyze_log**: Main entry function for analyzing logs.
+- **extract_ora_error_lines**: Extracts ORA errors from the log text.
+- **generate_responses_for_ora_errors**: Generates solutions and summaries for extracted ORA errors.
+- **generate_summary**: Generates a summary of all extracted ORA errors.
+- **soda_insert**: Inserts data into an ADW SODA collection.
+
+
 
 ## Deploy the function
 In Cloud Shell, run the *fn deploy* command to build the function and its dependencies as a Docker image, 
@@ -122,20 +131,4 @@ Test can also be done using curl command and check output file created in Object
 ```
 echo -n '{"log_object_storage_url": "https://objectstorage.us-chicago-1.oraclecloud.com/n/****/b/**/o/MF_DP_APP1_IMPDP.log", "ords_base_url": "https://qfoidsyfqbriabt-....../ords", "db_schema": "....", "db_user": "...", "db_pwd": "..."}' | fn invoke AITests genai
 ```
-
-## Lets drill down to undnerstand function code:
-
-- **analyze_log**: Main entry function for analyzing logs.
-- **extract_ora_error_lines**: Extracts ORA errors from the log text.
-- **generate_responses_for_ora_errors**: Generates solutions and summaries for extracted ORA errors.
-- **generate_summary**: Generates a summary of all extracted ORA errors.
-- **soda_insert**: Inserts data into an ADW SODA collection.
-
-## Logging
-
-Logging is configured at the DEBUG level to capture detailed information. Logs will output to the console by default.
-
-## Error Handling
-
-The script includes error handling mechanisms that log issues at various stages of the process. If an error occurs during log analysis or Generative AI inference, the function will return a detailed error message.
 
