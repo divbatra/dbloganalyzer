@@ -1,6 +1,6 @@
 ## Introduction
 
-This tool performs Comprehensive Log Analysis. It analyzes log files uploaded to extract ORA errors, generates responses and summaries using Oracle Cloud Infrastructure's Generative AI service, and stores the results in Oracle Autonomous Data Warehouse (ADW) via the SODA API.
+This tool performs Comprehensive Log Analysis. It analyzes log files uploaded to extract ORA errors, generates responses and summaries using Oracle Cloud Infrastructure's Generative AI service, and stores the results in Oracle Autonomous Data Warehouse (ADW) via the Simple Oracle Document Access (SODA) API.
 
 
 ## Features
@@ -105,6 +105,9 @@ Review the following files in the current folder:
 * the code of the function, [func.py](./func.py)
 * its dependencies, [requirements.txt](./requirements.txt)
 * the function metadata, [func.yaml](./func.yaml)
+
+Please note you need to modify config file as per your tenancy, and generate key file and modify Docker file accordingly.
+Please check https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm for help on how to generate a key-pair and calculate the key fingerprint.
 
   ## Lets drill down to understand function code:
 
