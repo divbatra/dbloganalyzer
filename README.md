@@ -2,6 +2,7 @@
 
 This tool performs Comprehensive Log Analysis. It analyzes log files uploaded to extract ORA errors, generates responses and summaries using Oracle Cloud Infrastructure's Generative AI service, and stores the results in Oracle Autonomous Data Warehouse (ADW) via the SODA API.
 
+
 ## Features
 
 - **Log Extraction**: Extracts ORA error lines from a provided log file.
@@ -9,6 +10,8 @@ This tool performs Comprehensive Log Analysis. It analyzes log files uploaded to
 - **Summary Generation**: Summarizes the ORA errors, categorizing them without exposing error details.
 - **Data Storage**: Stores the generated solutions and summaries in ADW collections using the SODA API.
 - **Output Management**: Uploads the generated responses to Oracle Object Storage.
+<img width="388" alt="image" src="https://github.com/user-attachments/assets/2983fd4d-1019-46dd-a13f-4d0eba1dc389">
+
 
 **Prerequisites**
 Before you deploy this sample function, make sure you have run step A, B and C of the Oracle Functions Quick Start Guide for Cloud Shell at : https://docs.oracle.com/en-us/iaas/Content/Functions/Tasks/functionsquickstartcloudshell.htm
