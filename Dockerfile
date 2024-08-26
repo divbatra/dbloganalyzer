@@ -12,7 +12,7 @@ ADD . /function/
 RUN rm -fr /function/.pip_cache
 RUN chmod -R o+r /function
 ENV PYTHONPATH=/function:/python
-ENTRYPOINT ["/python/bin/fdk", "/function/func.py", "analyze_log"]
+ENTRYPOINT ["/python/bin/fdk", "/function/func.py", "handler"]
 RUN mkdir -p /home/opc/loganalyzer
 COPY config /home/opc/loganalyzer
 COPY key.pem /home/opc/loganalyzer
