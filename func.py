@@ -9,16 +9,17 @@ import threading
 from fdk import response
 
 # Setup logging
-logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG level to capture all logs
+logging.basicConfig(level=logging.DEBUG)  # Set logging level to DEBUG to capture all logs
 logger = logging.getLogger(__name__)
 
 # Setup basic variables
-compartment_id = "ocid1.compartment.oc1..aaaaaaaada7sesidnelvwkurhxxqz4n3w6mna6a3df2b2kulnbdffjxxfsbq"
+compartment_id = "ocid1.compartment.oc1..aaa********************************fsbq"
 CONFIG_PROFILE = "DEFAULT"
 config = oci.config.from_file('/home/opc/loganalyzer/config', CONFIG_PROFILE)
 endpoint = "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com"
 object_storage_path = 'output/'
 
+# Initialize Generative AI Inference client
 generative_ai_inference_client = oci.generative_ai_inference.GenerativeAiInferenceClient(
     config=config,
     service_endpoint=endpoint,
@@ -27,14 +28,52 @@ generative_ai_inference_client = oci.generative_ai_inference.GenerativeAiInferen
 )
 
 def extract_ora_error_lines(log_text):
+    """
+    Extracts lines containing ORA errors from the log text.
+    """
     logger.debug("Extracting ORA error lines from log text.")
     ora_line_pattern = re.compile(r'^ORA-\d+(?!.*warning).*', re.MULTILINE | re.IGNORECASE)
     ora_error_lines = ora_line_pattern.findall(log_text)
     return ora_error_lines
 
-def generate_response_for_error(ora_error, sequence_number, responses, output_lock, ordsbaseurl, schema, dbuser, dbpwd, input_filename):
+def soda_insert(ordsbaseurl, schema, dbuser, dbpwd, document, collection_name="errors_log"):
+    """
+    Inserts a document in Autonomous Database (ADB).
+    """
+    logger.debug(f"Inserting document into SODA. URL: {ordsbaseurl}/{schema}/soda/latest/{collection_name}, Document: {document}")
     try:
-        # Prepare request
+        auth = (dbuser, dbpwd)
+        sodaurl = ordsbaseurl + '/admin' + '/soda/latest/'
+        collectionurl = sodaurl + collection_name
+        headers = {'Content-Type': 'application/json'}
+        r = requests.post(collectionurl, auth=auth, headers=headers, data=json.dumps(document))
+
+        # Log the raw response text for debugging
+        logger.debug(f"Raw response from SODA API: {r.text}")
+
+        if r.status_code == 200:
+            try:
+                r_json = r.json()  # Try to parse JSON from the response
+                logger.debug(f"SODA insert response: {r_json}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to decode JSON from response: {e}")
+                r_json = {}  # Default to an empty dict or handle as needed
+        else:
+            logger.error(f"SODA API returned status code {r.status_code}")
+            r_json = {}
+
+    except Exception as e:
+        logger.error(f"Error inserting document into collection {collection_name}: {e}")
+        raise
+
+    return r_json
+
+def generate_response_for_error(ora_error, sequence_number, responses, output_lock, ordsbaseurl, schema, dbuser, dbpwd, input_filename):
+    """
+    Generates a response (probable solution) for a given ORA error using Generative AI.
+    """
+    try:
+        # Prepare request for Generative AI
         cohere_generate_text_request = oci.generative_ai_inference.models.CohereLlmInferenceRequest()
         cohere_generate_text_request.prompt = (
             f'Please provide ora-error solution. It should show SQL query as well. '
@@ -69,7 +108,7 @@ def generate_response_for_error(ora_error, sequence_number, responses, output_lo
         }
         responses.append(response_entry)
 
-        # Write to ADW
+        # Write to ADW (Autonomous Database)
         document = {
             "sequence_number": sequence_number,
             "ora_error": ora_error,
@@ -83,8 +122,11 @@ def generate_response_for_error(ora_error, sequence_number, responses, output_lo
             logger.error(f"Error while inserting into collection errors_log: {str(insert_status)}")
 
 def generate_summary(ora_errors, sequence_number, summary_lock, ordsbaseurl, schema, dbuser, dbpwd, input_filename):
+    """
+    Generates a summary for the list of ORA errors using Generative AI.
+    """
     try:
-        # Generate the summary using Generative AI
+        # Prepare request for Generative AI
         cohere_generate_text_request = oci.generative_ai_inference.models.CohereLlmInferenceRequest()
         cohere_generate_text_request.prompt = (
             "Print total error count.\n"
@@ -98,7 +140,7 @@ def generate_summary(ora_errors, sequence_number, summary_lock, ordsbaseurl, sch
         cohere_generate_text_request.frequency_penalty = 1.0
         
         generate_text_detail = oci.generative_ai_inference.models.GenerateTextDetails()
-        generate_text_detail.serving_mode = oci.generative_ai_inference.models.OnDemandServingMode(model_id="cohere.command")
+        generate_text_detail.serving_mode = oci.generative_ai_inference.models.OnDemandServingMode(model_id="ocid1.generativeaimodel.oc1.us-chicago-1.amaaaaaask7dceyafhwal37hxwylnpbcncidimbwteff4xha77n5xz4m7p6a")
         generate_text_detail.compartment_id = compartment_id
         generate_text_detail.inference_request = cohere_generate_text_request
 
@@ -122,144 +164,105 @@ def generate_summary(ora_errors, sequence_number, summary_lock, ordsbaseurl, sch
         if "id" in insert_status.get("items", [{}])[0]:
             logger.debug(f"Successfully inserted summary document ID {insert_status['items'][0]['id']} into collection Summary_Errors")
         else:
-            logger.error(f"Error while inserting summary into collection Summary_Errors: {str(insert_status)}")
+            logger.error(f"Error while inserting into collection Summary_Errors: {str(insert_status)}")
 
-def generate_responses_for_ora_errors(ora_errors, namespace_name, bucket_name, object_storage_file_path, ordsbaseurl, schema, dbuser, dbpwd):
-    threads = []
-    responses = []
-    summary_lock = threading.Lock()
-    output_lock = threading.Lock()
+def generate_responses_for_ora_errors(input_file_name, namespace_name, bucket_name, object_storage_file_path, ordsbaseurl, schema, dbuser, dbpwd):
+    """
+    Orchestrates the generation of responses and summaries for ORA errors and write output back to object storage.
+    """
+    logger.debug("Initializing OCI Object Storage client.")
+    object_storage_client = oci.object_storage.ObjectStorageClient(config=config)
 
-    # Define input_filename here
-    input_filename = object_storage_file_path.split("/")[-1].split(".")[0]  
-
-    for sequence_number, ora_error in enumerate(set(ora_errors), start=1):
-        thread = threading.Thread(target=generate_response_for_error, args=(ora_error, sequence_number, responses, output_lock, ordsbaseurl, schema, dbuser, dbpwd, input_filename))
-        threads.append(thread)
-        thread.start()
-
-    for thread in threads:
-        thread.join()
-
-    # Generate summary
-    logger.info("Generating summary of errors.")
-    generate_summary(ora_errors, len(ora_errors), summary_lock, ordsbaseurl, schema, dbuser, dbpwd, input_filename)
-
-    output_file_content = ""
-    for response in sorted(responses, key=lambda x: x['sequence_number']):
-        output_file_content += f"{response['sequence_number']}. Error: {response['ora_error']}\n"
-        output_file_content += f"-------------------------------------------------------------------------\n"
-        output_file_content += f"Probable Solution: {response['solution']}\n"
-        output_file_content += f"-------------------------------------------------------------------------\n"
-
-    logger.debug("Uploading output file to Object Storage.")
-    object_storage_client = oci.object_storage.ObjectStorageClient(config)
-    object_storage_client.put_object(
-        namespace_name=namespace_name,
-        bucket_name=bucket_name,
-        object_name=object_storage_file_path,
-        put_object_body=output_file_content.encode("utf-8")
-    )
-    logger.debug("Output file uploaded successfully.")
-
-    return output_file_content
-
-def soda_insert(ordsbaseurl, schema, dbuser, dbpwd, document, collection_name="errors_log"):
-    logger.debug(f"Inserting document into SODA. URL: {ordsbaseurl}/{schema}/soda/latest/{collection_name}, Document: {document}")
     try:
-        auth = (dbuser, dbpwd)
-        sodaurl = ordsbaseurl + '/admin' + '/soda/latest/'
-        collectionurl = sodaurl + collection_name
-        headers = {'Content-Type': 'application/json'}
-        r = requests.post(collectionurl, auth=auth, headers=headers, data=json.dumps(document))
+        # Read the log file from Object Storage
+        logger.debug(f"Fetching log file {object_storage_file_path} from bucket {bucket_name}.")
+        log_object = object_storage_client.get_object(
+            namespace_name=namespace_name, 
+            bucket_name=bucket_name, 
+            object_name=object_storage_file_path
+        )
+        log_text = log_object.data.text
+        logger.debug(f"Log file fetched. Size: {len(log_text)} characters.")
 
-        # Log the raw response text for debugging
-        logger.debug(f"Raw response from SODA API: {r.text}")
+        # Extract ORA errors from the log
+        ora_error_lines = extract_ora_error_lines(log_text)
+        logger.debug(f"Extracted {len(ora_error_lines)} ORA error lines.")
 
-        if r.status_code == 200:
-            try:
-                r_json = r.json()  # Try to parse JSON from the response
-                logger.debug(f"SODA insert response: {r_json}")
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to decode JSON from response: {e}")
-                r_json = {}  # Default to an empty dict or handle as needed
-        else:
-            logger.error(f"SODA API returned status code {r.status_code}")
-            r_json = {}
+        if not ora_error_lines:
+            logger.warning("No ORA errors found in the log file.")
+            return
 
-    except Exception as e:
-        logger.error(f"Error inserting document into collection {collection_name}: {e}")
+        responses = []
+        output_lock = threading.Lock()
+        threads = []
+
+        # Generate responses for each ORA error line
+        for i, ora_error in enumerate(ora_error_lines, start=1):
+            thread = threading.Thread(
+                target=generate_response_for_error, 
+                args=(ora_error, i, responses, output_lock, ordsbaseurl, schema, dbuser, dbpwd, input_file_name)
+            )
+            threads.append(thread)
+            thread.start()
+
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+
+        logger.debug(f"Generated responses for {len(responses)} ORA errors.")
+
+        # Generate summary for the ORA errors
+        summary_lock = threading.Lock()
+        summary_thread = threading.Thread(
+            target=generate_summary, 
+            args=(ora_error_lines, len(ora_error_lines), summary_lock, ordsbaseurl, schema, dbuser, dbpwd, input_file_name)
+        )
+        summary_thread.start()
+        summary_thread.join()
+
+        logger.debug("Completed response and summary generation process.")
+
+    except oci.exceptions.ServiceError as e:
+        logger.error(f"An OCI service error occurred: {e}")
         raise
 
-    return r_json
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        raise
 
-
-def analyze_log(ctx, data: io.BytesIO):
-    logger.debug("Starting log analysis.")
+def handler(ctx, data: io.BytesIO = None):
+    """
+    Oracle Functions handler for processing log files to extract ORA errors, generate responses, and summaries.
+    """
     try:
-        if not data.getvalue():
-            raise ValueError("Empty input data")
+        body = json.loads(data.getvalue())
+        logger.debug(f"Received request body: {body}")
 
-        req_data = json.loads(data.getvalue())
-        log_object_storage_url = req_data.get('log_object_storage_url')
-        ordsbaseurl = req_data.get('ords_base_url')
-        schema = req_data.get('db_schema')
-        dbuser = req_data.get('db_user')
-        dbpwd = req_data.get('db_pwd')
+        # Extract necessary parameters
+        input_file_name = body['input_file_name']
+        namespace_name = body['namespace_name']
+        bucket_name = body['bucket_name']
+        object_storage_file_path = body['object_storage_file_path']
+        ordsbaseurl = body['ordsbaseurl']
+        schema = body['schema']
+        dbuser = body['dbuser']
+        dbpwd = body['dbpwd']
 
-        logger.debug(f"Parameters - log_object_storage_url: {log_object_storage_url}, ords_base_url: {ordsbaseurl}, db_schema: {schema}, db_user: {dbuser}")
+        # Start the processing
+        logger.debug("Starting the ORA error processing pipeline.")
+        generate_responses_for_ora_errors(input_file_name, namespace_name, bucket_name, object_storage_file_path, ordsbaseurl, schema, dbuser, dbpwd)
 
-        if not all([log_object_storage_url, ordsbaseurl, schema, dbuser, dbpwd]):
-            logger.error("Missing one or more required parameters in the JSON payload.")
-            return response.Response(
-                ctx, response_data=json.dumps({'error': 'Missing one or more required parameters in the JSON payload'}),
-                headers={"Content-Type": "application/json"}, status_code=400
-            )
-
-        logger.info(f"Downloading log file from {log_object_storage_url}")
-        namespace_name = log_object_storage_url.split("/")[4]
-        bucket_name = log_object_storage_url.split("/")[6]
-        object_name = log_object_storage_url.split("/")[-1]
-
-        logger.debug(f"Object Storage - Namespace: {namespace_name}, Bucket: {bucket_name}, Object: {object_name}")
-
-        object_storage_client = oci.object_storage.ObjectStorageClient(config)
-        object_content = object_storage_client.get_object(namespace_name=namespace_name, bucket_name=bucket_name, object_name=object_name).data.content
-
-        log_text = io.BytesIO(object_content).read().decode('utf-8')
-
-        ora_error_lines = extract_ora_error_lines(log_text)
-        if not ora_error_lines:
-            logger.info("No ORA errors found in the log file.")
-            return response.Response(
-                ctx, response_data=json.dumps({'message': 'No ORA errors found in the log file'}),
-                headers={"Content-Type": "application/json"}, status_code=200
-            )
-
-        logger.info("Generating responses for ORA errors.")
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        input_filename = object_name.split(".")[0]  # Extract the base filename without extension
-        object_storage_file_path = f"output/{input_filename}_{timestamp}.txt"
-
-        output_file_content = generate_responses_for_ora_errors(
-            ora_errors=ora_error_lines,
-            namespace_name=namespace_name,
-            bucket_name=bucket_name,
-            object_storage_file_path=object_storage_file_path,
-            ordsbaseurl=ordsbaseurl,
-            schema=schema,
-            dbuser=dbuser,
-            dbpwd=dbpwd
-        )
-
+        # Return a success response
         return response.Response(
-            ctx, response_data=json.dumps({'message': 'Log analysis completed successfully', 'output_file_path': object_storage_file_path}),
-            headers={"Content-Type": "application/json"}, status_code=200
+            ctx, 
+            response_data=json.dumps({"status": "success"}),
+            headers={"Content-Type": "application/json"}
         )
 
     except Exception as e:
-        logger.error(f"Error during log analysis: {e}")
+        logger.error(f"An error occurred during the function handler execution: {e}")
         return response.Response(
-            ctx, response_data=json.dumps({'error': str(e)}),
-            headers={"Content-Type": "application/json"}, status_code=500
+            ctx, 
+            response_data=json.dumps({"status": "error", "message": str(e)}),
+            headers={"Content-Type": "application/json"}
         )
