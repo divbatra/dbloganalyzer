@@ -126,6 +126,7 @@ push the image to OCIR, and deploy the function to Oracle Functions in your appl
 ```
 fn -v deploy --app <app-name>
 ```
+You can get APEX details from : https://github.com/KritiR22/loganalyzerapp/tree/main
 
 ## Test
 Flow can be tested using APEX by uploading the logfile. Once, you click on Analyze button. It will call the rest end point that we created using API gateway invoking the OCI Function explained below.
